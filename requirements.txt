@@ -5,4 +5,4 @@ seaborn
 scikit-learn
 optuna
 lightgbm
-   
+mpi4py
