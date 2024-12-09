@@ -16,6 +16,7 @@ parser = ArgumentParser()
 parser.add_argument("-s", "--seed", dest="seed", help="Random seed", default=42, type=int)
 parser.add_argument("-f", "--fraction", dest="fraction", help="Fraction of dataset each rank uses. Ex: for 1/4 use -f 4", default=125, type=int)
 parser.add_argument("-d", "--data", dest="data", help="Path to the dataset", default="data/pha-asteroids.csv")
+parser.add_argument("-j", "--jobs", dest="jobs", help="Number of jobs for GridSearchCV", default=None, type=int)
 args = parser.parse_args()
 
 # Initialize MPI
@@ -49,8 +50,6 @@ if df is None:
     MPI.Finalize()
     exit()
 
-# Seed consistency across ranks
-print(f"Rank {rank}: Using random seed = {args.seed}")
 
 # Separate features and target
 X = df.drop(["pha", "class"], axis=1)
@@ -61,8 +60,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 # Define parameter grid for GridSearchCV
 param_grid = {
-    "n_estimators": [50, 100, 200],
-    "min_samples_split": [2, 5, 10],
+    "n_estimators": [50, 100, 150, 200],
+    "min_samples_split": [2, 5, 7, 10],
     "bootstrap": [True, False]
 }
 
@@ -77,8 +76,11 @@ X_resampled, y_resampled = resample(X_train, y_train,
 
 # Perform GridSearchCV on the resampled data
 rf = RandomForestClassifier(random_state=rank_seed)
-grid_search = GridSearchCV(rf, param_grid, cv=3, scoring="roc_auc", verbose=0)
+grid_search = GridSearchCV(rf, param_grid, n_jobs=args.jobs,
+                           cv=5, scoring="roc_auc", verbose=0)
 grid_search.fit(X_resampled, y_resampled)
+
+
 
 # Get the best model and evaluate it on the test set
 best_model = grid_search.best_estimator_
@@ -95,14 +97,22 @@ results = comm.gather((rank, auc, execution_time, grid_search.best_params_), roo
 if rank == 0:
     print("\nBootstrapping and Bagging with GridSearchCV Results:")
 
+    # Convert results to a pandas DataFrame
+    results_df = pd.DataFrame(
+        results, 
+        columns=["Rank", "AUC", "ExecutionTime", "BestParams"]
+    )
+
+    # Display results
+    for _, row in results_df.iterrows():
+        print(f"Rank {row['Rank']}: AUC = {row['AUC']:.4f} in {row['ExecutionTime']:.2f} seconds.")
+        print(f"  BestParams: {row['BestParams']}")
+
     # Ensure results directory exists
     os.makedirs("results", exist_ok=True)
-    with open("results/grid_search_results_rf.txt", "w") as f:
-        for result in sorted(results):
-            print(f"Rank {result[0]}: AUC = {result[1]:.4f} in {result[2]:.2f} seconds.")
-            print(f"  Best Params: {result[3]}")
-            
-            # Write to the results file
-            f.write(f"Rank {result[0]}, AUC = {result[1]:.4f}, Time = {result[2]:.2f}s, Best Params = {result[3]}\n")
-    
+
+    # Save results to a CSV file
+    results_path = f"results/grid_search_results_rf_{time.time()}.csv"
+    results_df.to_csv(results_path, index=False)
+    print(f"Results saved to {results_path}")
     print("GridSearchCV and bagging completed.")
