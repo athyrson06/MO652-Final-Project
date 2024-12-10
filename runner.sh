@@ -8,13 +8,6 @@ USECLASS=(True False)
 MODELS=(0 1 2 3 4 5 6)
 DROPS=(0 1 2 3 4)
 
-# SEEDS=(42 314 123)
-# FRACTIONS=(1)
-# NOISE_LEVELS=(0)
-# USECLASS=(True)
-# MODELS=(0)
-# DROPS=(0)
-
 # Path to dataset
 DATA_PATH="data/pha-asteroids.csv"
 
